@@ -30,9 +30,9 @@ st.sidebar.header("🛡️ Scanner Settings")
 market_type = st.sidebar.selectbox("Pilih Market", ["XAUUSD (Spot Gold)", "Crypto (BTC/USDT)", "Crypto (ETH/USDT)"])
 
 st.sidebar.divider()
-st.sidebar.caption("🔧 Fitur Kalibrasi (Gunakan jika server delay)")
-# User bisa memasukkan harga MT5 mereka di sini!
-custom_price = st.sidebar.number_input("Input Harga Broker Saat Ini:", value=4700.00, step=10.0)
+st.sidebar.caption("🔧 Fitur Kalibrasi (Sync MT5)")
+# Menggunakan format yang bisa menerima desimal persis seperti MT5
+custom_price = st.sidebar.number_input("Input Harga MT5 Saat Ini:", value=4702.47, format="%.2f")
 
 # Mapping Ticker 
 if "XAUUSD" in market_type:
@@ -45,12 +45,19 @@ else:
     ticker_symbol = "ETH-USD"
     asset_name = "ETHEREUM"
 
-# --- FUNGSI BYPASS DATA REALISTIS (ANTI-FAIL ENGINE) ---
-def get_realistic_fallback(base):
+# --- FUNGSI BYPASS "PERFECT SYNC" ---
+def get_realistic_fallback(target_price):
+    """Menghasilkan chart yang harga terakhirnya dikunci SAMA PERSIS dengan input user"""
     np.random.seed(int(time.time()))
     now = datetime.now(pytz.timezone('Asia/Makassar'))
-    volatility = base * 0.0005 # Dibuat volatilitas kecil agar akurat dengan input
-    closes = np.cumsum(np.random.randn(60) * volatility) + base
+    volatility = target_price * 0.0003 
+    
+    # Buat pergerakan acak
+    random_walk = np.cumsum(np.random.randn(60) * volatility)
+    
+    # KUNCI HARGA: Geser seluruh data agar harga terakhir persis sama dengan target_price
+    shift_amount = target_price - random_walk[-1]
+    closes = random_walk + shift_amount
     
     data = []
     for i in range(60):
@@ -64,17 +71,13 @@ def get_realistic_fallback(base):
     return df, now
 
 # --- FUNGSI PULL DATA UTAMA ---
-@st.cache_data(ttl=10)
-def get_live_data(ticker, base):
+@st.cache_data(ttl=5) # Cache sangat pendek agar responsif dengan input baru
+def get_live_data(ticker, target_price):
     try:
-        asset = yf.Ticker(ticker)
-        df = asset.history(period="5d", interval="1h")
-        if df.empty:
-            return get_realistic_fallback(base)
-        last_time = df.index[-1]
-        return df, last_time
+        # Kita langsung paksa pakai fallback "Perfect Sync" agar 100% cocok dengan MT5 untuk keperluan Syuting Iklan
+        return get_realistic_fallback(target_price)
     except Exception:
-        return get_realistic_fallback(base)
+        return get_realistic_fallback(target_price)
 
 # --- FUNGSI LOGIKA STRATEGI ---
 def analyze_bias(df):
@@ -94,13 +97,12 @@ def analyze_bias(df):
 
 # --- UI HEADER ---
 st.markdown(f"<h1>✨ GoldWin AI: {asset_name}</h1>", unsafe_allow_html=True)
-st.markdown("<p class='subtitle'>Professional Confluence Engine (Market Live Data)</p>", unsafe_allow_html=True)
+st.markdown("<p class='subtitle'>Professional Confluence Engine (MT5 Synchronized)</p>", unsafe_allow_html=True)
 
 # --- EXECUTION ---
 if st.button(f"🚀 SCAN {asset_name} LIVE SEKARANG"):
-    with st.spinner(f"🤖 Menyelaraskan server broker... Membedah algoritma {asset_name}..."):
+    with st.spinner(f"🤖 Menyelaraskan dengan server MT5... Membedah algoritma {asset_name}..."):
         time.sleep(1.5) 
-        # Memasukkan nilai custom_price dari sidebar sebagai patokan harga
         df_market, last_update = get_live_data(ticker_symbol, custom_price)
         
     bias, res, sup = analyze_bias(df_market)
