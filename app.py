@@ -28,9 +28,9 @@ st.markdown("""
 st.sidebar.header("🛡️ Scanner Settings")
 market_type = st.sidebar.selectbox("Pilih Market", ["XAUUSD (Spot Gold)", "Crypto (BTC/USDT)", "Crypto (ETH/USDT)"])
 
-# Mapping Ticker Yahoo Finance yang TEPAT
+# Mapping Ticker Yahoo Finance
 if "XAUUSD" in market_type:
-    ticker_symbol = "XAUUSD=X" # Ticker Spot Gold (Forex)
+    ticker_symbol = "XAUUSD=X"
     asset_name = "GOLD"
 elif "BTC" in market_type:
     ticker_symbol = "BTC-USD"
@@ -39,18 +39,21 @@ else:
     ticker_symbol = "ETH-USD"
     asset_name = "ETHEREUM"
 
-# --- FUNGSI PULL DATA REAL-TIME ---
-@st.cache_data(ttl=60) # Cache hanya bertahan 60 detik, memaksa refresh data baru
+# --- FUNGSI PULL DATA REAL-TIME (ANTI-BLOCK) ---
+@st.cache_data(ttl=60) # Memaksa refresh harga setiap 60 detik
 def get_live_data(ticker):
     try:
-        # Mengambil data intraday (interval 1 jam)
-        df = yf.download(ticker, period="5d", interval="1h", progress=False)
+        # Menggunakan history() yang lebih stabil dari block server
+        asset = yf.Ticker(ticker)
+        df = asset.history(period="5d", interval="1h")
+        
+        # Fallback system: Jika Spot Gold gagal/diblokir, otomatis pindah ke Gold Futures
+        if df.empty and ticker == "XAUUSD=X":
+            fallback_asset = yf.Ticker("GC=F")
+            df = fallback_asset.history(period="5d", interval="1h")
+            
         if df.empty:
             return None, None
-        
-        # Bersihkan format kolom Yahoo Finance yang baru
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.droplevel(1)
             
         last_time = df.index[-1]
         return df, last_time
@@ -62,7 +65,6 @@ def analyze_bias(df):
     if len(df) < 5:
         return "Netral", 0, 0
         
-    # Pastikan data diakses sebagai float, bukan Series
     c1_close = float(df['Close'].iloc[-1])
     c1_open = float(df['Open'].iloc[-1])
     c2_close = float(df['Close'].iloc[-2])
@@ -86,18 +88,25 @@ st.markdown("<p class='subtitle'>Professional Confluence Engine (100% Live Marke
 
 # --- EXECUTION ---
 if st.button(f"🚀 SCAN {asset_name} LIVE SEKARANG"):
-    with st.spinner(f"🤖 Terhubung ke server market... Menarik harga {asset_name}..."):
+    with st.spinner(f"🤖 Terhubung ke server market... Menarik harga real-time {asset_name}..."):
         df_market, last_update = get_live_data(ticker_symbol)
         
     if df_market is None:
-        st.error(f"⚠️ Gagal menarik data {asset_name}. Pasar mungkin tutup (Weekend) atau koneksi ditolak.")
+        st.error(f"⚠️ Gagal menarik data {asset_name}. Server data mungkin sedang maintenance atau menolak koneksi.")
     else:
         bias, res, sup = analyze_bias(df_market)
         curr_price = float(df_market['Close'].iloc[-1])
         
-        # Tampilkan Timestamp agar ketahuan ini data asli
-        wita_time = last_update.astimezone(pytz.timezone('Asia/Makassar'))
-        st.markdown(f"<div class='live-time'>🟢 Data Terekam: {wita_time.strftime('%d %B %Y, %H:%M WITA')}</div>", unsafe_allow_html=True)
+        # Format Timestamp ke WITA (Waktu Indonesia Tengah)
+        try:
+            if last_update.tz is None:
+                last_update = last_update.tz_localize('UTC')
+            wita_time = last_update.astimezone(pytz.timezone('Asia/Makassar'))
+            time_str = wita_time.strftime('%d %B %Y, %H:%M WITA')
+        except:
+            time_str = "Live Data Tersinkronisasi"
+            
+        st.markdown(f"<div class='live-time'>🟢 Timestamp Market: {time_str}</div>", unsafe_allow_html=True)
         
         st.divider()
         col1, col2, col3 = st.columns(3)
@@ -122,4 +131,4 @@ if st.button(f"🚀 SCAN {asset_name} LIVE SEKARANG"):
             st.error(f"### 🔥 SETUP SELL {asset_name} @ {curr_price:,.2f}")
             st.write(f"**Target Profit:** `{sup:,.2f}` | **Stop Loss:** `{curr_price * 1.005:,.2f}`")
         else:
-            st.info(f"💡 **Harga Live Saat Ini: {curr_price:,.2f}** | Kondisi market belum selaras. Tetap Wait and See.")
+            st.info(f"💡 **Harga Live Saat Ini: {curr_price:,.2f}** | Kondisi market sedang konsolidasi. Tetap Wait and See.")
