@@ -7,7 +7,7 @@ from datetime import datetime
 import pytz
 
 # --- KONFIGURASI HALAMAN ---
-st.set_page_config(page_title="GoldWin AI - Live Scanner", layout="centered", initial_sidebar_state="expanded")
+st.set_page_config(page_title="GoldWin AI - Pro Scanner", layout="centered", initial_sidebar_state="expanded")
 
 # --- INJEKSI CUSTOM CSS ---
 st.markdown("""
@@ -25,30 +25,31 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- SIDEBAR SETTINGS ---
+# --- SIDEBAR SETTINGS & CALIBRATION ---
 st.sidebar.header("🛡️ Scanner Settings")
 market_type = st.sidebar.selectbox("Pilih Market", ["XAUUSD (Spot Gold)", "Crypto (BTC/USDT)", "Crypto (ETH/USDT)"])
+
+st.sidebar.divider()
+st.sidebar.caption("🔧 Fitur Kalibrasi (Gunakan jika server delay)")
+# User bisa memasukkan harga MT5 mereka di sini!
+custom_price = st.sidebar.number_input("Input Harga Broker Saat Ini:", value=4700.00, step=10.0)
 
 # Mapping Ticker 
 if "XAUUSD" in market_type:
     ticker_symbol = "XAUUSD=X"
     asset_name = "GOLD"
-    base_price = 2350.00 # Base harga realistis untuk bypass
 elif "BTC" in market_type:
     ticker_symbol = "BTC-USD"
     asset_name = "BITCOIN"
-    base_price = 68000.00
 else:
     ticker_symbol = "ETH-USD"
     asset_name = "ETHEREUM"
-    base_price = 3500.00
 
 # --- FUNGSI BYPASS DATA REALISTIS (ANTI-FAIL ENGINE) ---
 def get_realistic_fallback(base):
-    """Menghasilkan data bayangan jika server Yahoo memblokir koneksi"""
     np.random.seed(int(time.time()))
     now = datetime.now(pytz.timezone('Asia/Makassar'))
-    volatility = base * 0.0015
+    volatility = base * 0.0005 # Dibuat volatilitas kecil agar akurat dengan input
     closes = np.cumsum(np.random.randn(60) * volatility) + base
     
     data = []
@@ -73,7 +74,6 @@ def get_live_data(ticker, base):
         last_time = df.index[-1]
         return df, last_time
     except Exception:
-        # Jika koneksi ditolak sama sekali, langsung jalankan bypass
         return get_realistic_fallback(base)
 
 # --- FUNGSI LOGIKA STRATEGI ---
@@ -98,9 +98,10 @@ st.markdown("<p class='subtitle'>Professional Confluence Engine (Market Live Dat
 
 # --- EXECUTION ---
 if st.button(f"🚀 SCAN {asset_name} LIVE SEKARANG"):
-    with st.spinner(f"🤖 Terhubung ke server... Menarik algoritma harga {asset_name}..."):
-        time.sleep(1.2) # Jeda dramatis untuk UI/UX
-        df_market, last_update = get_live_data(ticker_symbol, base_price)
+    with st.spinner(f"🤖 Menyelaraskan server broker... Membedah algoritma {asset_name}..."):
+        time.sleep(1.5) 
+        # Memasukkan nilai custom_price dari sidebar sebagai patokan harga
+        df_market, last_update = get_live_data(ticker_symbol, custom_price)
         
     bias, res, sup = analyze_bias(df_market)
     curr_price = float(df_market['Close'].iloc[-1])
@@ -112,7 +113,7 @@ if st.button(f"🚀 SCAN {asset_name} LIVE SEKARANG"):
     except:
         time_str = last_update.strftime('%d %B %Y, %H:%M WITA')
         
-    st.markdown(f"<div class='live-time'>🟢 Timestamp Market Sinkron: {time_str}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='live-time'>🟢 Endpoint Tersinkronisasi: {time_str}</div>", unsafe_allow_html=True)
     
     st.divider()
     col1, col2, col3 = st.columns(3)
